@@ -1,5 +1,14 @@
 # ⚡ SWAS Leads — Setup Completo
 
+## Stack
+- Next.js 14 + TypeScript
+- Tailwind CSS dark premium
+- **Apify** Google Maps Scraper (dados reais de negócios)
+- **Perplexity API** (chat IA, opcional)
+- Netlify deploy
+
+---
+
 ## 1. Clone e instale
 
 ```bash
@@ -8,29 +17,36 @@ cd buscarleads
 npm install
 ```
 
-## 2. Configure a API Key do Google
+---
 
-### Passo a passo:
-1. Acesse https://console.cloud.google.com
-2. Crie um projeto novo (ex: "swas-leads")
-3. Vá em **APIs & Services > Library**
-4. Ative as APIs:
-   - ✅ **Places API (New)**
-   - ✅ **Geocoding API**
-5. Vá em **APIs & Services > Credentials**
-6. Clique em **Create Credentials > API Key**
-7. Copie a key
+## 2. Configure as variáveis de ambiente
 
-### Configure no projeto:
 ```bash
 cp .env.local.example .env.local
 ```
-Abra `.env.local` e cole sua key:
-```
-GOOGLE_PLACES_API_KEY=AIzaSy...
-```
 
-## 3. Rode o projeto
+Edite `.env.local` com suas keys.
+
+### 2.1 Apify Token (obrigatório)
+
+1. Crie conta grátis em https://apify.com
+2. Vá em **Console → Settings → Integrations**
+3. Copie seu **API token** (começa com `apify_api_...`)
+4. Cole em `APIFY_TOKEN=`
+
+**Custo Apify:** ~$2.10 por 1.000 lugares. Com $5 de crédito grátis você testa bastante.
+
+### 2.2 Perplexity API Key (opcional)
+
+1. Acesse https://www.perplexity.ai/settings/api
+2. Gere uma API Key
+3. Cole em `PERPLEXITY_API_KEY=`
+
+Sem ela o chat funciona com respostas estáticas inteligentes.
+
+---
+
+## 3. Rode local
 
 ```bash
 npm run dev
@@ -38,27 +54,47 @@ npm run dev
 
 Acesse: http://localhost:3000
 
-## 4. Como usar
+---
 
-1. Digite o nicho (ex: Barbearia, Restaurante, Academia)
-2. Digite a cidade (ex: Arujá, Guarulhos, São Paulo)
-3. Clique em **Buscar Leads**
-4. Veja os leads com score SWAS calculado automaticamente
-5. Clique em qualquer lead para ver detalhes + abordagem WhatsApp
-6. Exporte os leads filtrados em CSV
+## 4. Deploy no Netlify
 
-## 5. Deploy na Vercel
+1. Conecte o repo `pter0005/buscarleads` no Netlify
+2. Adicione as env vars no painel do Netlify:
+   - `APIFY_TOKEN`
+   - `PERPLEXITY_API_KEY` (opcional)
+3. Build command: `npm run build`
+4. Deploy!
 
-```bash
-npm install -g vercel
-vercel
-```
+---
 
-Na Vercel, adicione a variável de ambiente:
-- `GOOGLE_PLACES_API_KEY` = sua key
+## Como usar
 
-## Nichos suportados
+### Via formulário
+1. Digite o nicho (Barbearia, Salão, Restaurante...)
+2. Digite a cidade
+3. Clique Buscar Leads
+4. Aguarde ~15-30s o Apify retornar os dados
 
-Barbearia, Salão, Restaurante, Pizzaria, Academia, Pet, Farmácia,
-Dentista, Mecânica, Padaria, Estética, Hotel, Escola, Advogado,
-Contabilidade, Imobiliária, Spa e qualquer termo em português.
+### Via Chat IA (bolinha verde no canto)
+1. Clique no ícone de chat
+2. Escreva em linguagem natural:
+   - "Quero cabeleireiros de mulher em Arujá"
+   - "Buscar salões em Guarulhos"
+   - "Restaurantes em Mogi das Cruzes"
+3. O assistente detecta o nicho e cidade e dispara a busca automaticamente
+
+---
+
+## Score SWAS
+
+| Fator | Pontos |
+|---|---|
+| Sem site | +35 |
+| Sem Instagram | +20 |
+| IG amador | +12 |
+| Sem identidade visual | +10 |
+| Movimentado sem site | +18 |
+| Alta avaliação sem presença | +10 |
+| Difícil de contatar | +5 |
+
+Score mais alto = maior oportunidade para a NEW Agency fechar.
