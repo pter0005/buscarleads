@@ -1,48 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PERPLEXITY_KEY = process.env.PERPLEXITY_API_KEY
+const GEMINI_KEY = process.env.GEMINI_API_KEY
 const APIFY_TOKEN = process.env.APIFY_TOKEN
-const ACTOR_ID = 'compass~crawler-google-places'
 
-// Extrai intenção de busca da mensagem do usuário
+const CIDADES = [
+  'arujá', 'aruja', 'mogi das cruzes', 'guarulhos', 'são paulo', 'sao paulo',
+  'campinas', 'suzano', 'itaquaquecetuba', 'poá', 'poa', 'ferraz de vasconcelos',
+  'santa isabel', 'brasília', 'brasilia', 'curitiba', 'belo horizonte',
+  'salvador', 'fortaleza', 'manaus', 'recife', 'porto alegre', 'belém', 'belem',
+  'ribeirão preto', 'ribeirao preto', 'sorocaba', 'santos', 'osasco', 'florianópolis',
+]
+
+const NICHOS = [
+  'barbearia', 'barbeiro', 'salão', 'salao', 'cabeleireiro', 'cabelereira', 'cabeleireiros',
+  'restaurante', 'pizzaria', 'lanchonete', 'hamburgueria', 'academia', 'pet shop', 'pet',
+  'farmácia', 'farmacia', 'dentista', 'odontologia', 'mecânica', 'mecanica', 'padaria',
+  'estética', 'estetica', 'hotel', 'pousada', 'escola', 'imobiliária', 'imobiliaria',
+  'açougue', 'acougue', 'mercado', 'supermercado', 'clínica', 'clinica',
+  'advocacia', 'advogado', 'contabilidade', 'oficina', 'borracharia', 'autoescola',
+  'psicólogo', 'psicologo', 'nutricionista', 'personal', 'fisioterapia',
+]
+
 function extrairIntencao(msg: string): { nicho: string | null; cidade: string | null } {
-  const msg_lower = msg.toLowerCase()
-
-  // Cidades comuns SP
-  const cidades = [
-    'arujá', 'aruja', 'mogi das cruzes', 'guarulhos', 'são paulo', 'sao paulo',
-    'campinas', 'suzano', 'itaquaquecetuba', 'poá', 'poa', 'ferraz', 'santa isabel'
-  ]
-
-  // Nichos comuns
-  const nichos = [
-    'barbearia', 'barbeiro', 'salão', 'salao', 'cabelereiro', 'cabeleireiro', 'cabelereira',
-    'restaurante', 'pizzaria', 'lanchonete', 'academia', 'pet shop', 'pet',
-    'farmácia', 'farmacia', 'dentista', 'mecânica', 'mecanica', 'padaria',
-    'estética', 'estetica', 'hotel', 'escola', 'imobiliaria', 'imobiliária',
-    'açougue', 'acougue', 'mercado', 'supermercado', 'clínica', 'clinica',
-    'advocacia', 'contabilidade', 'oficina', 'borracharia'
-  ]
-
+  const lower = msg.toLowerCase()
   let cidade: string | null = null
   let nicho: string | null = null
 
-  for (const c of cidades) {
-    if (msg_lower.includes(c)) {
-      cidade = c.charAt(0).toUpperCase() + c.slice(1)
+  for (const c of CIDADES) {
+    if (lower.includes(c)) {
+      cidade = c.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
       break
     }
   }
-
-  for (const n of nichos) {
-    if (msg_lower.includes(n)) {
+  for (const n of NICHOS) {
+    if (lower.includes(n)) {
       nicho = n.charAt(0).toUpperCase() + n.slice(1)
       break
     }
   }
-
   return { nicho, cidade }
 }
+
+const SYSTEM_PROMPT = `Você é o assistente de prospecção da NEW Agency, uma agência digital brasileira especializada em transformar negócios locais em marcas digitais profissionais.
+
+Sua única função: ajudar o usuário a encontrar leads qualificados — negócios locais com alta demanda mas presença digital fraca (sem site, sem Instagram profissional, sem identidade visual).
+
+Quando o usuário mencionar um nicho (ex: barbearia, salão, restaurante) E uma cidade brasileira na mesma mensagem, responda confirmando a busca de forma animada e direta.
+
+Se perguntar sobre a NEW Agency: somos uma agência de design e marketing digital que cria sites profissionais, identidade visual e gestão de redes sociais para negócios locais que já têm demanda mas ainda não aparecem online. Site: newperfect.netlify.app
+
+Regras:
+- Fale português brasileiro informal e direto
+- Respostas curtas (máximo 3 linhas)
+- Sem markdown excessivo
+- Se não entender, peça nicho + cidade`
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -52,79 +63,76 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'message obrigatório' }, { status: 400 })
   }
 
-  // Tenta extrair intenção de busca
   const { nicho, cidade } = extrairIntencao(message)
-  const querBuscar = nicho && cidade
 
-  // Resposta de busca direta (sem LLM) se tiver nicho + cidade
-  if (querBuscar && APIFY_TOKEN) {
-    // Dispara busca no Apify em background e retorna preview rápido
+  // Detectou nicho + cidade — dispara busca direto
+  if (nicho && cidade && APIFY_TOKEN) {
     return NextResponse.json({
       type: 'search_trigger',
-      message: `🔍 Entendido! Buscando **${nicho}** em **${cidade}** agora...`,
+      message: `🔍 Buscando **${nicho}** em **${cidade}**...`,
       search: { nicho, cidade },
     })
   }
 
-  // Se não tem Perplexity key, resposta estática inteligente
-  if (!PERPLEXITY_KEY) {
+  // Sem Gemini key — resposta estática
+  if (!GEMINI_KEY) {
     return NextResponse.json({
       type: 'message',
       message: gerarRespostaEstatica(message),
     })
   }
 
-  // Chat via Perplexity
-  const systemPrompt = `Você é o assistente de prospecção da NEW Agency, uma agência digital brasileira especializada em transformar negócios locais em marcas digitais.
-
-Sua função: ajudar o usuário a encontrar leads qualificados — negócios locais com alta demanda mas presença digital fraca (sem site, sem Instagram profissional, sem identidade visual).
-
-Sempre que o usuário mencionar um nicho (ex: barbearia, salão, restaurante) e uma cidade brasileira, extraia essas informações e pergunte se deseja iniciar a busca.
-
-Se o usuário perguntar sobre a NEW Agency: somos uma agência de design e marketing digital que cria sites profissionais, identidade visual e gestão de redes sociais para negócios locais que já têm demanda mas ainda não aparecem online. Site: newperfect.netlify.app
-
-Seja direto, prático e fale português brasileiro informal.`
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-6), // últimas 6 mensagens
-    { role: 'user', content: message },
+  // Chat via Gemini 2.5 Pro
+  const contents = [
+    ...history.slice(-8).map((m: any) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    { role: 'user', parts: [{ text: message }] },
   ]
 
-  const pplxRes = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${PERPLEXITY_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages,
-      max_tokens: 400,
-      temperature: 0.7,
-    }),
-  })
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents,
+        generationConfig: {
+          maxOutputTokens: 300,
+          temperature: 0.7,
+        },
+      }),
+    }
+  )
 
-  const pplxData = await pplxRes.json()
-  const reply = pplxData.choices?.[0]?.message?.content || 'Desculpe, não entendi. Tente novamente.'
+  if (!geminiRes.ok) {
+    const err = await geminiRes.text()
+    console.error('Gemini error:', err)
+    return NextResponse.json({ type: 'message', message: gerarRespostaEstatica(message) })
+  }
 
-  // Tenta extrair intenção da resposta
-  const intencaoResposta = extrairIntencao(reply)
+  const geminiData = await geminiRes.json()
+  const reply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || gerarRespostaEstatica(message)
+
+  // Tenta extrair intenção da resposta do Gemini
+  const intencao = extrairIntencao(reply)
 
   return NextResponse.json({
     type: 'message',
     message: reply,
-    search: intencaoResposta.nicho && intencaoResposta.cidade ? intencaoResposta : undefined,
+    search: intencao.nicho && intencao.cidade ? intencao : undefined,
   })
 }
 
 function gerarRespostaEstatica(msg: string): string {
   const lower = msg.toLowerCase()
-  if (lower.includes('oi') || lower.includes('olá') || lower.includes('ola') || lower.includes('boa')) {
-    return `Oi! 👋 Sou o assistente da **NEW Agency**. Posso buscar leads qualificados pra você!\n\nMe diga o **nicho** e a **cidade**, por exemplo:\n\n> "Buscar barbearias em Arujá"\n> "Quero salões de beleza em Guarulhos"\n> "Restaurantes em Mogi das Cruzes"`
+  if (lower.includes('oi') || lower.includes('olá') || lower.includes('ola') || lower.includes('boa') || lower.includes('ei')) {
+    return `Oi! 👋 Sou o assistente da NEW Agency. Me fala o nicho e a cidade que você quer prospectar!\n\nExemplos:\n\u203a "Cabeleireiros em Arujá"\n\u203a "Restaurantes em Guarulhos"\n\u203a "Acadêmias em Mogi das Cruzes"`
   }
-  if (lower.includes('new agency') || lower.includes('empresa') || lower.includes('vocês')) {
-    return `A **NEW Agency** é uma agência digital especializada em transformar negócios locais em marcas profissionais online. 🚀\n\nFazemos:\n- Sites profissionais\n- Identidade visual\n- Instagram e redes sociais\n- Tráfego pago\n\nNosso foco são negócios que já têm clientes mas ainda não aparecem no digital. [Ver portfólio](https://newperfect.netlify.app)`
+  if (lower.includes('new agency') || lower.includes('empresa') || lower.includes('vocês') || lower.includes('voces')) {
+    return `A NEW Agency transforma negócios locais em marcas digitais. 🚀\n\nFazemos sites, identidade visual, Instagram e tráfego pago para quem já tem clientes mas não aparece online.\n\n🌐 newperfect.netlify.app`
   }
-  return `Me diga o **nicho** e a **cidade** que você quer prospectar, por exemplo:\n\n> "Barbearias em Arujá"\n> "Salões de cabeleireiro em Guarulhos"\n\nVou buscar os leads qualificados pra você automaticamente! 🎯`
+  return `Me diz o nicho e a cidade! Por exemplo:\n\u203a "Barbearias em Arujá"\n\u203a "Salões em São Paulo"\n\nVou buscar os leads qualificados pra você. 🎯`
 }
